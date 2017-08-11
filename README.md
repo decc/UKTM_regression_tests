@@ -12,3 +12,6 @@ Output CSVs go to the second folder of dds if no other location is specified.
 Input folder names are used as column headings in some of the database temporary tables. There is some replacement of characters which are illegal in unquoted Postgres field names (i.e. changes "." and "-" to underscores). However, there is no checking of or dealing with spaces in folder names so don't include any!
 
 Note that requires Ruby gem 'pg', the Postgres driver for Ruby. There is some code to try to install this if it's missing, but this may not work if you have more than one Ruby installation on the machine. (In which case install by hand.)
+
+**NB** Is compatible with pg 0.20.0 May not work with latest. Can install a particular version using this syntax:
+gem install pg -v 0.20.0
