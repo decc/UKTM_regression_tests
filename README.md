@@ -13,5 +13,5 @@ Input folder names are used as column headings in some of the database temporary
 
 Note that requires Ruby gem 'pg', the Postgres driver for Ruby. There is some code to try to install this if it's missing, but this may not work if you have more than one Ruby installation on the machine. (In which case install by hand.)
 
-**NB** Is compatible with pg 0.20.0 May not work with latest. Can install a particular version using this syntax:
+**NB** Is compatible with pg 0.20.0. May not work with latest. Can install a particular version using this syntax:
 gem install pg -v 0.20.0
