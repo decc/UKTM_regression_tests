@@ -8,6 +8,8 @@ require 'logger'
 
 #following checks the postgres driver is installed and installs it if not. It assumes that there's only one Ruby installation on the machine
 #If there are more, it might try to install the gem to the wrong ruby version which will cause the code to fail
+#Note also that this script is only compatible with pg versions upto and including 0.20. Later version
+#seems to have syntax changes which cause things to fail.
 begin
   require 'pg'
 rescue LoadError
@@ -31,8 +33,13 @@ def load_dds(dir_path, pg_connection, tablename)
     fn=dd_file.gsub(/^(.+)\//,"")
     while (line = fin.gets)
       i+=1
+      line=line.chomp
+#This splits out the non-numerical part of the entry      
+      entry=line.gsub(/(.+) [0-9\.(E\-)]+$/,'\1')
+#     This splits out the numerical entry if any (field prepopulated with zero)
+      entry_val=line.gsub(/.+ ([0-9\.(E\-)]+)$/,'\1')
 #chomp removes newline characters which gets adds.      
-      res  = pg_connection.exec('insert into '+tablename+' select $1,$2,$3,$4',[dirname,fn,i.to_s,line.chomp])
+      res  = pg_connection.exec('insert into '+tablename+' select $1,$2,$3,$4,$5',[dirname,fn,i.to_s,entry,entry_val.to_f])
     end
   end  
 end
@@ -45,9 +52,9 @@ newpath = ARGV[1].gsub("\\","/")
 
 #Create the temp tables on postgres
 conn.exec('drop table IF exists regold') 
-conn.exec('create temp table regold(sourcef varchar, filename varchar,lineno varchar,entry varchar)') 
+conn.exec('create temp table regold(sourcef varchar, filename varchar,lineno varchar,entry varchar,entry_val numeric default 0.00)') 
 conn.exec('drop table IF exists regnew')
-conn.exec('create temp table regnew(sourcef varchar, filename varchar,lineno varchar,entry varchar)') 
+conn.exec('create temp table regnew(sourcef varchar, filename varchar,lineno varchar,entry varchar, entry_val numeric default 0.00)') 
 
 #Load the dds using the above function
 load_dds(oldpath,conn, "regold")
@@ -60,12 +67,14 @@ if ARGV.length==3
 else
   outdir=newpath
 end
-
+#Generate the summary statistics about no. of entries the same, no. different.
 s= "select * into temp basic_counts from   
   (  
-    select a.filename filename, 'same' as entry, count(*) as counts from regold a inner join regnew b on a.filename=b.filename and a.entry=b.entry group by a.filename union  
-    select a.filename, 'only_$1', count(*)  from regold a left join regnew b on a.filename=b.filename and a.entry=b.entry where b.filename is null group by a.filename union  
-    select b.filename, 'only_$2', count(*)  from regold a right join regnew b on a.filename=b.filename and a.entry=b.entry where a.filename is null group by b.filename
+    select a.filename filename, 'same' as entry, count(*) as counts from regold a inner join regnew b on a.entry=b.entry and round(a.entry_val,5)=round(b.entry_val,5) group by a.filename union  
+    select a.filename, 'only_$1', count(*)  from regold a left join regnew b on a.filename=b.filename and a.entry=b.entry and round(a.entry_val,5)=round(b.entry_val,5)
+    where b.filename is null group by a.filename union  
+    select b.filename, 'only_$2', count(*)  from regold a right join regnew b on a.filename=b.filename and a.entry=b.entry and round(a.entry_val,5)=round(b.entry_val,5)
+    where a.filename is null group by b.filename
   ) c;  
 select * into temp summ_ind from
 (
@@ -106,9 +115,9 @@ conn.exec(s)
 #Generate the list of differences between the files
 s="
 copy ( 
-  select a.sourcef,a.filename,a.lineno,a.entry from regold a left join regnew b on a.filename=b.filename and a.entry=b.entry where b.entry is null  
+  select a.sourcef,a.filename,a.lineno,a.entry,a.entry_val from regold a left join regnew b on a.filename=b.filename and a.entry=b.entry and round(a.entry_val,5)=round(b.entry_val,5) where b.entry is null  
   union   
-  select b.sourcef,b.filename,b.lineno,b.entry from regold a right join regnew b on a.filename=b.filename and a.entry=b.entry where a.entry is null  
+  select b.sourcef,b.filename,b.lineno,b.entry,b.entry_val from regold a right join regnew b on a.filename=b.filename and a.entry=b.entry and round(a.entry_val,5)=round(b.entry_val,5) where a.entry is null  
   order by filename,lineno,sourcef 
 ) TO '"+outdir+"/diffList.csv' delimiter ',' CSV HEADER;"
 conn.exec(s)
